@@ -21,7 +21,7 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 - **过滤**:运行中的子 agent 跳过(记入日志);fork 子会话 seed 未引用的子 agent(属于被分支抛弃的路线)不跟随;
 - 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`。
 
-零 UI、零路由、零依赖、零文件改写:全部走官方 API。任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
+子 agent 复制部分零依赖、零文件改写:全部走官方 API。任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
 
 ## 安装
 
@@ -38,6 +38,16 @@ dsh plugin --profile web remove dsh-fork-relink
 ## 测试
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
+
+## 继承的排队消息(可见化)
+
+fork 会把原会话未消费的排队消息(`agent/inbox/spliced` 折叠)一并继承下来。这些项在继续对话时会**先于你新发的消息**送达模型,而官方队列条对继承项不显示。本插件在输入框上方把它们显示出来:
+
+- 读取 `POST /log-prune/queue { sessionId }` → `{ ok, items: [{ id, text, inherited }] }`:活体会话读 `Session.snapshotEvents()`,冷会话读 `session.v3.jsonl.zstd`;活体读取失败时自动回退到日志文件,不让整条队列静默消失。
+- 删除 `POST /log-prune/queue/remove { sessionId, itemId }`:经官方 `sessionController.updateQueue` 的 `remove` 动作,与官方队列条同一入口。
+- 提示条提供逐条「删除」与「全部清除」;`inherited` 标记该项是否来自继承前缀——切点取日志里最后一条 `session/end-seed { inherited: true }`(fork 子会话在继承切点写入的标记),活体会话用精确的 `inheritedEventCount`。
+
+队列本身保持原样:插件只显示与手动删除,不自动清除。
 
 ## 已知边界
 
