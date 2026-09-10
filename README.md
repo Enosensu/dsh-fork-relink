@@ -1,6 +1,6 @@
 # dsh-fork-relink
 
-DSH(DeepSeek Harness)官方 fork 的伴随修复插件:**fork(分支)发生后,自动把原会话的直接子 agent 记录重链到新会话**,fork 出的对话完整保留子 agent 面板、代理路由、descriptor、label 等信息。
+DSH(DeepSeek Harness)官方 fork 的伴随插件:**fork(分支)发生后,自动为原会话的直接子 agent 创建完整副本挂到新会话下**——fork 出的对话完整保留子 agent 面板、代理路由、descriptor、label 等信息;原会话的子 agent 记录原样保留(复制而非转移,两个分支互不干扰)。
 
 > 本插件由 Enosensu 与 AI(ZCode 智能体,GLM 模型)结对开发 · Co-developed with AI.
 
@@ -10,14 +10,18 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 
 ## 原理
 
-监听官方 `session/created` 事件。fork 子会话(`isSeeded` 且有 `parentSession` 且 `origin !== 'subagent'`)进入 store 时,把旧会话的直接子 agent(`origin === 'subagent'` 的冷会话)的日志头帧 `parentSession` 重链到新会话:
+监听官方 `session/created` 事件。fork 子会话(`isSeeded` 且有 `parentSession` 且 `origin !== 'subagent'`)进入 store 时,为旧会话的每个直接子 agent 调用官方 `agents.create` 创建**完整副本**:
 
-- **只重写头帧**,其余帧字节级原样(头帧独立成帧是 DSH 会话格式的保证);
-- 每次重链前把原文件备份到 `$DSH_HOME/trash/`;
-- 运行中的子 agent(内存中活着)跳过,避免与内存态互相覆盖;
+- `meta.parentSession` 在创建那一刻就指向 fork 子会话(无文件改写、无归属抢夺);
+- `meta.origin: 'subagent'`、`delegationDepth` = 父 +1;
+- `seed` = 原子 agent 的完整持久日志(逐行一致),`inheritedEventCount` = seed 长度;
+- `agentOptions` 取原子 agent descriptor 里的 provider/model;
+- `setup` 经官方 `agentPresets.composeFrom(childCtx, forkChildAgent.ctx)` 加入 fork 子会话的组合(与 spawn 路径同一入口);
+- **递归**:副本的子 agent 同样被复制,整棵子 agent 树跟随;
+- **过滤**:运行中的子 agent 跳过(记入日志);fork 子会话 seed 未引用的子 agent(属于被分支抛弃的路线)不跟随;
 - 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`。
 
-零 UI、零路由、零依赖:任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
+零 UI、零路由、零依赖、零文件改写:全部走官方 API。任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
 
 ## 安装
 
@@ -33,15 +37,12 @@ dsh plugin --profile web remove dsh-fork-relink
 
 ## 测试
 
-离线测试覆盖:fork 子会话守卫命中、子 agent 自身创建被排除、普通会话被排除、按 origin 过滤枚举、头帧重写后其余帧字节不变、新头合法且首帧恰好一行。
+真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
 
 ## 已知边界
 
-- **整棵子 agent 树统一跟随**:fork 只断开一条边(fork 的会话 → 它的直接子 agent),本插件修复的正是这条边;更深的链接(子 agent 的子 agent)从未断开,面板的树遍历沿修好的链即可到达全部后代。
-- **只跟随被保留历史引用的子 agent**:重链前检查 fork 子会话的 seed 是否引用了该子 agent 的 id——如果你 fork 的时间点早于某个子 agent 的生成回合(它属于被分支抛弃的路线),它留在原会话,不会跟过来。
-- 只重链**直接**子 agent;孙代(子 agent 的子 agent)的父链接本就指向子 agent 自己,无需改动。
-- 运行中的子 agent 跳过(内存态会覆盖头帧,重链无效),记入日志。
-- 若未来官方 fork 支持子会话重链(或官方提供 children relink API),本插件即可卸载。
+- 运行中的子 agent 跳过(避免与内存态冲突),记入日志;可等它结束再 fork 一次。
+- 副本完整复制子 agent 的历史;若未来官方 fork 支持子树跟随(或提供 children relink/copy API),本插件即可卸载。
 
 ## License
 
