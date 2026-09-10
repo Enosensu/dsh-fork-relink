@@ -37,7 +37,10 @@ dsh plugin --profile web remove dsh-fork-relink
 
 ## 已知边界
 
+- **整棵子 agent 树统一跟随**:fork 只断开一条边(fork 的会话 → 它的直接子 agent),本插件修复的正是这条边;更深的链接(子 agent 的子 agent)从未断开,面板的树遍历沿修好的链即可到达全部后代。
+- **只跟随被保留历史引用的子 agent**:重链前检查 fork 子会话的 seed 是否引用了该子 agent 的 id——如果你 fork 的时间点早于某个子 agent 的生成回合(它属于被分支抛弃的路线),它留在原会话,不会跟过来。
 - 只重链**直接**子 agent;孙代(子 agent 的子 agent)的父链接本就指向子 agent 自己,无需改动。
+- 运行中的子 agent 跳过(内存态会覆盖头帧,重链无效),记入日志。
 - 若未来官方 fork 支持子会话重链(或官方提供 children relink API),本插件即可卸载。
 
 ## License
