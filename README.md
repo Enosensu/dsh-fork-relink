@@ -31,6 +31,8 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 
 语义是**复制而非转移**:旧分支照常使用原子 agent,新分支使用副本,两个分支互不干扰。错误码沿用核心词汇(`NOT_RESUMABLE` / `UNAUTHORIZED` / `PARENT_UNAVAILABLE`),插件不新增也不改写。
 
+**运维后果(必须知道的唯一一条)**:fork 之后,任何「续跑同一子会话」的协议都要**改用副本 id**——原 id 仍归旧分支,对新父必然返回 `UNAUTHORIZED: belongs to another parent session`。以 `list_agents` 给出的 id 为准,它与你应当发送的 id 是同一个。
+
 子 agent 复制部分零依赖、零文件改写:全部走官方 API。任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
 
 ## 安装
