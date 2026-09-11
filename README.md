@@ -18,8 +18,18 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 - `agentOptions` 取原子 agent descriptor 里的 provider/model;
 - `setup` 经官方 `agentPresets.composeFrom(childCtx, forkChildAgent.ctx)` 加入 fork 子会话的组合(与 spawn 路径同一入口);
 - **递归**:副本的子 agent 同样被复制,整棵子 agent 树跟随;
+- **副本是冷会话**:副本落盘后立即释放活体。留活的副本会持有该会话的写租约,而插件经 `agents.create` 创建的活体不在 subagent continuation manager 的 resident 表里 ⇒ `send_message` 不走活体投递、改走冷恢复,而冷恢复第一步 `persistence.open(id, 'write')` 会被副本自己的写租约拒绝(`SessionAlreadyOwnedError`),对外表现为 `subagent "…" is unavailable` —— **目录里看得见、消息发不进**。释放后副本留在磁盘上,成为官方 resume 路径可寻址的冷会话,首次发消息由官方冷恢复按 descriptor 唤醒;
 - **过滤**:运行中的子 agent 跳过(记入日志);fork 子会话 seed 未引用的子 agent(属于被分支抛弃的路线)不跟随;
-- 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`。
+- 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`,含每个副本的可寻址性复核结果(`unresumable` 为空即全部可寻址)。
+
+## 可达性(明示)
+
+| 对象 | fork 前旧父 | fork 后新父 |
+|---|---|---|
+| 原子 agent(原件) | 仍然可达(记录与 id 均未改动) | 不可达(`UNAUTHORIZED: belongs to another parent session`) |
+| 副本(新 id) | 不可达(它不是旧父的子) | 可达:`list_agents` 的 id 与 `send_message` 接受的 id **完全一致**,首次发送冷恢复唤醒 |
+
+语义是**复制而非转移**:旧分支照常使用原子 agent,新分支使用副本,两个分支互不干扰。错误码沿用核心词汇(`NOT_RESUMABLE` / `UNAUTHORIZED` / `PARENT_UNAVAILABLE`),插件不新增也不改写。
 
 子 agent 复制部分零依赖、零文件改写:全部走官方 API。任何走官方 fork 的入口(原生分支按钮、其他插件)都被覆盖。
 
