@@ -1,7 +1,7 @@
 {
   "name": "dsh-fork-relink",
   "version": "0.1.0",
-  "description": "DSH fork 伴随插件:官方 fork(分支)发生后,自动把原会话的直接子 agent 记录(origin=subagent 的冷会话)的头帧 parentSession 重链到新会话,子 agent 面板与代理路由信息不丢。纯事件驱动,零 UI、零路由。Auto-relink subagent session records to a forked child so the forked conversation keeps its subagent panel.",
+  "description": "DSH 的 fork 伴随插件:官方 fork 发生后,把原会话的直接子 agent 复制到 fork 出的新对话下(递归整棵子树,副本经官方 agent API 创建),每个副本成为可被官方恢复路径唤醒的冷会话,新对话保留子代理面板并能继续给它们发消息。Copy a forked DSH conversation's subagents onto it and keep them reachable.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

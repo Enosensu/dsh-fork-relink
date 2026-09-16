@@ -37,6 +37,14 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 
 ## 安装
 
+从 GitHub 安装(使用者走这条;装到的是本仓库 `main` 的当前代码,本插件是纯 ESM、无构建步骤,所以 git 安装不需要 `allowBuilds` 授权):
+
+```sh
+dsh plugin --profile web add github:Enosensu/dsh-fork-relink
+```
+
+本地开发时直接指向工作目录:
+
 ```sh
 dsh plugin --profile web add "link:<本目录>"
 ```
