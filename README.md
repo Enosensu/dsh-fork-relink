@@ -59,11 +59,27 @@ dsh plugin --profile web remove dsh-fork-relink
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
 
-## 继承的排队消息
+## 继承的排队消息(补官方队列条之缺)
 
-fork 会把原会话未消费的排队消息(`agent/inbox/spliced` 折叠)一并继承下来。这类项**由官方队列条显示与编辑**:宿主在会话转活时补发一次队列控制帧——该会话的 inbox 投影在 agent 挂上之前就已水合,那次变化帧会因 `agent?.session !== session` 守卫被丢弃,客户端便永远收不到这份队列(表现是"打开 fork 对话时队列条空的,直到手动发一条消息才出现")。补帧后官方队列条按官方交互显示这些项(编辑 / 删除 / 插话发送)。
+fork 会把原会话未消费的排队轮次(`agent/inbox/spliced` → `next-turn` 折叠)一并继承下来。这些项在继续对话时会**先于你新发的消息**送达模型,而官方队列条并不总能显示它们:宿主只在 inbox 投影变化时推送队列帧,而 fork 子会话的投影在 agent 挂上之前就已水合 —— 那一帧可能被丢弃,队列于是要么迟到、要么根本不出现。
 
-因此本插件**不再自绘任何 UI、也不再注册任何路由**:早期版本自带一条提示条与 `/log-prune/queue*` 三个路由,已随该核心修复一并删除。
+**本插件只补官方条显示不到的行**,不替换它:客户端读官方那条队列(`useSession(s => s.queue)` 里 `placement === 'queued'` 的 id),把这批 id 从宿主侧折叠结果里减掉,差值非空才渲染。因此:
+
+- 官方条已经显示时,本插件**什么都不画**(实测:官方 3 行、本插件 0 行);
+- 官方条缺失或迟到时,继承项仍然可见、仍可编辑删除(实测过的历史情形,也正是本插件存在的理由);
+- 行集合与官方条同语义(只取 `next-turn`),不会把插话/上下文项冒充成"将先于新消息送达"。
+
+路由(与官方 `updateQueue` 同一入口,要求会话在服务器内处于打开状态):
+
+- 读取 `POST /log-prune/queue { sessionId }` → `{ ok, items: [{ id, text, inherited }] }`:活体会话读 `Session.snapshotEvents()`,冷会话读 `session.v3.jsonl.zstd`;活体读取失败自动回退文件,不让队列静默消失。
+- 编辑 `POST /log-prune/queue/edit { sessionId, itemId, text }` → 官方 `edit`(空文本按官方规则拒绝)。
+- 删除 `POST /log-prune/queue/remove { sessionId, itemId }` → 官方 `remove`。
+
+`inherited` 标记该项是否来自继承前缀:切点取日志里最后一条 `session/end-seed { inherited: true }`(fork 子会话在继承切点写入的标记),活体会话用精确的 `inheritedEventCount`。
+
+**版式对齐官方队列条**:提示条不引用官方组件(插件只能 require 客户端平台表里的 9 个共享模块,`ui-conversation` 与其 CSS 模块都不在其中),而是逐项复用同一套布局令牌与尺寸——`--dsh-composer-card-max-width` / `--dsh-composer-dock-inset` / `--dsh-composer-side-clearance` / `--dsh-composer-stack-gap`、36px 行高、`12px 12px 0 0` 面板圆角、`--dsw-specific-tip` 面板底色、28×28 圆形操作按钮、28px 输入态编辑器;实测宽度等于官方公式上限(`card-max-width − 2×dock-inset`),`margin: 0 auto calc(0px - stack-gap - 3px)` 与官方一致,因此与官方队列条叠放时读作同一块面。编辑交互同官方:铅笔按钮进入编辑态,**Enter 保存 / Esc 取消**,文本按全文读取(界面只用 CSS 省略号做显示截断)。
+
+队列本身保持原样:插件只显示、编辑与手动删除,不自动清除。
 
 ## 已知边界
 
