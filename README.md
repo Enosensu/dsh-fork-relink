@@ -59,18 +59,11 @@ dsh plugin --profile web remove dsh-fork-relink
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
 
-## 继承的排队消息(可见化)
+## 继承的排队消息
 
-fork 会把原会话未消费的排队消息(`agent/inbox/spliced` 折叠)一并继承下来。这些项在继续对话时会**先于你新发的消息**送达模型,而官方队列条对继承项不显示。本插件在输入框上方把它们显示出来:
+fork 会把原会话未消费的排队消息(`agent/inbox/spliced` 折叠)一并继承下来。这类项**由官方队列条显示与编辑**:宿主在会话转活时补发一次队列控制帧——该会话的 inbox 投影在 agent 挂上之前就已水合,那次变化帧会因 `agent?.session !== session` 守卫被丢弃,客户端便永远收不到这份队列(表现是"打开 fork 对话时队列条空的,直到手动发一条消息才出现")。补帧后官方队列条按官方交互显示这些项(编辑 / 删除 / 插话发送)。
 
-- 读取 `POST /log-prune/queue { sessionId }` → `{ ok, items: [{ id, text, inherited }] }`:活体会话读 `Session.snapshotEvents()`,冷会话读 `session.v3.jsonl.zstd`;活体读取失败时自动回退到日志文件,不让整条队列静默消失。
-- 编辑 `POST /log-prune/queue/edit { sessionId, itemId, text }`:经官方 `sessionController.updateQueue` 的 `edit` 动作(与官方队列条同一入口,空文本按官方规则拒绝),发送方即界面右侧的铅笔按钮。
-- 删除 `POST /log-prune/queue/remove { sessionId, itemId }`:经官方 `updateQueue` 的 `remove` 动作。
-- 提示条提供逐条「编辑」「删除」与「全部清除」;`inherited` 标记该项是否来自继承前缀——切点取日志里最后一条 `session/end-seed { inherited: true }`(fork 子会话在继承切点写入的标记),活体会话用精确的 `inheritedEventCount`。
-
-**版式对齐官方队列条**:提示条不引用官方组件(插件只能 require 客户端平台表里的 9 个共享模块,`ui-conversation` 与其 CSS 模块都不在其中),而是逐项复用同一套布局令牌与尺寸——`--dsh-composer-card-max-width` / `--dsh-composer-dock-inset` / `--dsh-composer-side-clearance` / `--dsh-composer-stack-gap`、36px 行高、`12px 12px 0 0` 面板圆角、`--dsw-specific-tip` 面板底色、28×28 圆形操作按钮、28px 输入态编辑器;实测宽度等于官方公式上限(`card-max-width − 2×dock-inset`),`margin: 0 auto calc(0px - stack-gap - 3px)` 与官方一致,因此与官方队列条叠放时读作同一块面。编辑交互同官方:铅笔按钮进入编辑态,**Enter 保存 / Esc 取消**,文本按全文读取(界面只用 CSS 省略号做显示截断)。
-
-队列本身保持原样:插件只显示、编辑与手动删除,不自动清除。
+因此本插件**不再自绘任何 UI、也不再注册任何路由**:早期版本自带一条提示条与 `/log-prune/queue*` 三个路由,已随该核心修复一并删除。
 
 ## 已知边界
 
