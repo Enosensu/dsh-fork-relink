@@ -59,41 +59,18 @@ dsh plugin --profile web remove dsh-fork-relink
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
 
-队列条的同源去重有一项离线回归检查:jsdom 渲染浏览器 half,喂入「宿主侧折叠结果」与「官方投影」的替身,断言重叠/补位/迟到帧/幽灵行四种情形。
+## 排队消息(自 0.3.0 起不再由本插件补位)
 
-```sh
-node test/queue-dedup-check.mjs
-```
+fork 会把原会话未消费的排队轮次(`agent/inbox/spliced` → `next-turn` 折叠)一并继承下来,这些项在继续对话时会**先于你新发的消息**送达模型。0.2.x 为此提供过一个「补位条」,只画官方队列条显示不到的行 —— 前提是官方 QueueDock 看不到继承项。
 
-它需要一份带 `node_modules` 的 dsh checkout 提供 `react`/`react-dom`/`jsdom`(路径取 `$DSH_CHECKOUT`,默认 `F:/ACG/Tool/deepseek-harness`);**插件本身仍然零依赖**。
+2026-09-20 在真实 GUI(Playwright 驱动本机 Chrome + 隔离实例)上实测:**当前 core 的 inbox 投影由日志尾页播种、本就带上继承项,官方条自己就把它们列全了**,补位条的差集恒为空、常驻空转。它历史上还因去重源失效(`SessionSnapshot.queue`,已被核心 `72f2e71070` 删除)把官方条已有的行又画一遍 —— 输入框上方两条一样的排队消息(0.2.1 修过)。
 
-## 继承的排队消息(补官方队列条之缺)
-
-fork 会把原会话未消费的排队轮次(`agent/inbox/spliced` → `next-turn` 折叠)一并继承下来。这些项在继续对话时会**先于你新发的消息**送达模型,而官方队列条并不总能显示它们:宿主只在 inbox 投影变化时推送队列帧,而 fork 子会话的投影在 agent 挂上之前就已水合 —— 那一帧可能被丢弃,队列于是要么迟到、要么根本不出现。
-
-**本插件只补官方条显示不到的行**,不替换它:客户端读的是**与官方条同源的那份数据** —— 宿主 inbox 投影的 `next-turn`(`useProjection('inbox')`,官方 QueueDock 读的就是它),把这批 id 从宿主侧折叠结果里减掉,差值非空才渲染。因此:
-
-- 官方条已经显示时,本插件**什么都不画**(回归检查第 1 项);
-- 官方条缺失或迟到时,继承项仍然可见、仍可编辑删除(第 2 项),官方帧到达后插件条自行消失(第 4 项);
-- 行集合与官方条同语义(只取 `next-turn`),不会把插话/上下文项冒充成"将先于新消息送达"。
-
-> **为什么不能读 `SessionSnapshot`**:核心提交 `72f2e71070`("reconcile durable inbox recovery with master")删掉了 `SessionSnapshot.queue`,权威队列改由宿主投影承载。插件曾按这个旧字段(`placement === 'queued'`)做差集,字段消失后它恒为 `undefined`、差集恒为空,于是把官方条已有的行又画了一遍 —— 输入框上方出现两条一样的排队消息。**判定来源必须与官方条同源**。
-
-路由(与官方 `updateQueue` 同一入口,要求会话在服务器内处于打开状态):
-
-- 读取 `POST /log-prune/queue { sessionId }` → `{ ok, items: [{ id, text, inherited }] }`:活体会话读 `Session.snapshotEvents()`,冷会话读 `session.v3.jsonl.zstd`;活体读取失败自动回退文件,不让队列静默消失。
-- 编辑 `POST /log-prune/queue/edit { sessionId, itemId, text }` → 官方 `edit`(空文本按官方规则拒绝)。
-- 删除 `POST /log-prune/queue/remove { sessionId, itemId }` → 官方 `remove`。
-
-`inherited` 标记该项是否来自继承前缀:切点取日志里最后一条 `session/end-seed { inherited: true }`(fork 子会话在继承切点写入的标记),活体会话用精确的 `inheritedEventCount`。
-
-**版式对齐官方队列条**:提示条不引用官方组件(插件只能 require 客户端平台表里的 9 个共享模块,`ui-conversation` 与其 CSS 模块都不在其中),而是逐项复用同一套布局令牌与尺寸——`--dsh-composer-card-max-width` / `--dsh-composer-dock-inset` / `--dsh-composer-side-clearance` / `--dsh-composer-stack-gap`、36px 行高、`12px 12px 0 0` 面板圆角、`--dsw-specific-tip` 面板底色、28×28 圆形操作按钮、28px 输入态编辑器;实测宽度等于官方公式上限(`card-max-width − 2×dock-inset`),`margin: 0 auto calc(0px - stack-gap - 3px)` 与官方一致,因此与官方队列条叠放时读作同一块面。编辑交互同官方:铅笔按钮进入编辑态,**Enter 保存 / Esc 取消**,文本按全文读取(界面只用 CSS 省略号做显示截断)。
-
-队列本身保持原样:插件只显示、编辑与手动删除,不自动清除。
+因此 0.3.0 删掉了整个补位条:浏览器 half、`/log-prune/queue`(读)、`/log-prune/queue/edit`、`/log-prune/queue/remove` 三个路由,以及只服务它们的注入(`webServer` / `sessions` / `sessionController`)。**子 agent 复制不受影响**;若未来某个 core 又显示不了继承项,回退到 0.2.1 即可。
 
 ## 已知边界
 
 - 运行中的子 agent 跳过(避免与内存态冲突),记入日志;可等它结束再 fork 一次。
+- 继承的排队消息不再由本插件呈现:官方队列条会显示它们(0.3.0 实测);插件只负责复制子 agent 树。
 - 副本完整复制子 agent 的历史;若未来官方 fork 支持子树跟随(或提供 children relink/copy API),本插件即可卸载。
 
 ## License
