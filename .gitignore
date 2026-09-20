@@ -1,0 +1,5 @@
+# Local-only development notes and tools.
+# Kept in the working copy, never published: HANDOFF.md carries this machine's
+# absolute paths and the local verification recipe.
+HANDOFF.md
+tools/
