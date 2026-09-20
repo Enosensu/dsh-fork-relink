@@ -2,6 +2,17 @@
 
 本仓库遵循语义化版本:`0.x` 期间次版本号(0.**2**.0)表示能力或行为变化,修订号(0.2.**1**)表示修复与文档。
 
+## 0.3.0 — 2026-09-20
+
+### 移除
+
+- **队列补位条整体删除**:浏览器 half(`lib/client.js`)、`/log-prune/queue`(读)、`/log-prune/queue/edit`、`/log-prune/queue/remove` 三个路由,以及只服务它们的注入(`webServer` / `sessions` / `sessionController`)。理由:该功能的前提是官方 QueueDock 显示不了 fork 继承的排队消息,而当前 core 的 inbox 投影由日志尾页播种、本就带上继承项 —— 2026-09-20 用 Playwright 驱动真实 GUI 实测,官方条自己就把 3 条继承项列全了,补位条的差集恒为空、**常驻空转**。它此前还因去重源(`SessionSnapshot.queue`,核心 `72f2e71070` 已删除该字段)失效,把官方条已有的行又画一遍(输入框上方两条一样的排队消息,0.2.1 修过)。删掉失效的一半后插件回归单一职责。
+- 随之删除 `test/queue-dedup-check.mjs`(它只测被删掉的补位条),`package.json` 去掉 `./client` 导出与 `dsh.client` 声明。
+
+### 保留
+
+- 子 agent 复制语义不变(见 0.2.0);若未来官方 fork 原生跟随子树,本插件即可卸载。
+
 ## 0.2.1 — 2026-09-20
 
 ### 修复
