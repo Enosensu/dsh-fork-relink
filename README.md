@@ -59,15 +59,25 @@ dsh plugin --profile web remove dsh-fork-relink
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
 
+队列条的同源去重有一项离线回归检查:jsdom 渲染浏览器 half,喂入「宿主侧折叠结果」与「官方投影」的替身,断言重叠/补位/迟到帧/幽灵行四种情形。
+
+```sh
+node test/queue-dedup-check.mjs
+```
+
+它需要一份带 `node_modules` 的 dsh checkout 提供 `react`/`react-dom`/`jsdom`(路径取 `$DSH_CHECKOUT`,默认 `F:/ACG/Tool/deepseek-harness`);**插件本身仍然零依赖**。
+
 ## 继承的排队消息(补官方队列条之缺)
 
 fork 会把原会话未消费的排队轮次(`agent/inbox/spliced` → `next-turn` 折叠)一并继承下来。这些项在继续对话时会**先于你新发的消息**送达模型,而官方队列条并不总能显示它们:宿主只在 inbox 投影变化时推送队列帧,而 fork 子会话的投影在 agent 挂上之前就已水合 —— 那一帧可能被丢弃,队列于是要么迟到、要么根本不出现。
 
-**本插件只补官方条显示不到的行**,不替换它:客户端读官方那条队列(`useSession(s => s.queue)` 里 `placement === 'queued'` 的 id),把这批 id 从宿主侧折叠结果里减掉,差值非空才渲染。因此:
+**本插件只补官方条显示不到的行**,不替换它:客户端读的是**与官方条同源的那份数据** —— 宿主 inbox 投影的 `next-turn`(`useProjection('inbox')`,官方 QueueDock 读的就是它),把这批 id 从宿主侧折叠结果里减掉,差值非空才渲染。因此:
 
-- 官方条已经显示时,本插件**什么都不画**(实测:官方 3 行、本插件 0 行);
-- 官方条缺失或迟到时,继承项仍然可见、仍可编辑删除(实测过的历史情形,也正是本插件存在的理由);
+- 官方条已经显示时,本插件**什么都不画**(回归检查第 1 项);
+- 官方条缺失或迟到时,继承项仍然可见、仍可编辑删除(第 2 项),官方帧到达后插件条自行消失(第 4 项);
 - 行集合与官方条同语义(只取 `next-turn`),不会把插话/上下文项冒充成"将先于新消息送达"。
+
+> **为什么不能读 `SessionSnapshot`**:核心提交 `72f2e71070`("reconcile durable inbox recovery with master")删掉了 `SessionSnapshot.queue`,权威队列改由宿主投影承载。插件曾按这个旧字段(`placement === 'queued'`)做差集,字段消失后它恒为 `undefined`、差集恒为空,于是把官方条已有的行又画了一遍 —— 输入框上方出现两条一样的排队消息。**判定来源必须与官方条同源**。
 
 路由(与官方 `updateQueue` 同一入口,要求会话在服务器内处于打开状态):
 
