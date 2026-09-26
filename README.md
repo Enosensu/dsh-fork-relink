@@ -19,6 +19,7 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 - `setup` 经官方 `agentPresets.composeFrom(childCtx, forkChildAgent.ctx)` 加入 fork 子会话的组合(与 spawn 路径同一入口);
 - **递归**:副本的子 agent 同样被复制,整棵子 agent 树跟随;
 - **副本是冷会话**:副本落盘后立即释放活体。留活的副本会持有该会话的写租约,而插件经 `agents.create` 创建的活体不在 subagent continuation manager 的 resident 表里 ⇒ `send_message` 不走活体投递、改走冷恢复,而冷恢复第一步 `persistence.open(id, 'write')` 会被副本自己的写租约拒绝(`SessionAlreadyOwnedError`),对外表现为 `subagent "…" is unavailable` —— **目录里看得见、消息发不进**。释放后副本留在磁盘上,成为官方 resume 路径可寻址的冷会话,首次发消息由官方冷恢复按 descriptor 唤醒;
+- **登记父会话目录**:每个副本创建后向父会话追加一条官方 `subagent/catalog`。v4 起子代理面板不扫磁盘 —— 目录投影只折叠父会话**自有区间**的目录事件,继承前缀里的不算;不写这条,副本就是「磁盘上有、面板里没有」(0.3.3 修复:0.3.1 起副本确实建出来了,但面板一直为空)。旧副本(0.3.2 及以前)在重开该 fork 会话时补登记。
 - **读盘按代际**:会话日志名由核心的会话格式版本决定(`session.vN.jsonl.zstd`,N = SESSION_FORMAT_VERSION);核心升级格式时**保留旧代际文件、在旁边另写新代际**,所以插件扫目录取**最高代际**,不把代际号写死(0.3.1 修复:此前写死 v3 与无版本名,核心升到 v4 后每个会话都被读成「没有子 agent」,fork 后新对话的子代理面板为空);
 - **过滤**:运行中的子 agent 跳过(记入日志);fork 子会话 seed 未引用的子 agent(属于被分支抛弃的路线)不跟随;
 - 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`,含每个副本的可寻址性复核结果(`unresumable` 为空即全部可寻址);复制开始记一条 `copying subagent tree`,每 10 个子 agent 记一条 `copy progress` —— 建副本是逐个 `agents.create`(本机实测每个约 3.5 s),子代理面板随副本落地逐步出现。
