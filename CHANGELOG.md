@@ -2,6 +2,13 @@
 
 本仓库遵循语义化版本:`0.x` 期间次版本号(0.**2**.0)表示能力或行为变化,修订号(0.2.**1**)表示修复与文档。
 
+## 0.3.2 — 2026-09-26
+
+### 新增
+
+- **复制期间的进度日志**:建副本是「每个子 agent 一次官方 `agents.create`」,本机实测每次约 3.5 s —— 35 个子 agent 要跑约 2 分钟,数百个要十几分钟。此前整段过程一行日志都没有,与「什么都没发生」无法区分(2026-09-26 的误报:fork 实际复制了 35 个子 agent,`copied: 35, unresumable: 0`,但因为当时仍在途中而被判为失效)。现在开始复制时记一条 `copying subagent tree`(含 fork 子会话、源会话、直接子 agent 数),每 10 个记一条 `copy progress`。
+- 离线检查 `test/copy-tree.mjs`(`npm test` 一并运行):用替身 ctx 驱动 `apply` 的 `session/created` 入口,覆盖守卫、已完成前缀截断、副本头部(parentSession / origin / isSeeded / delegationDepth)、`inheritedEventCount` 与 seed 一致、递归整棵树、自有 descriptor、跳过没有 `turn/end` 的子 agent、副本活体释放与进度日志。
+
 ## 0.3.1 — 2026-09-26
 
 ### 修复
