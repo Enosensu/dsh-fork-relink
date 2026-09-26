@@ -19,6 +19,7 @@ DSH 的 fork(会话列表里的分支按钮)用**新会话 id** 承接被继承�
 - `setup` 经官方 `agentPresets.composeFrom(childCtx, forkChildAgent.ctx)` 加入 fork 子会话的组合(与 spawn 路径同一入口);
 - **递归**:副本的子 agent 同样被复制,整棵子 agent 树跟随;
 - **副本是冷会话**:副本落盘后立即释放活体。留活的副本会持有该会话的写租约,而插件经 `agents.create` 创建的活体不在 subagent continuation manager 的 resident 表里 ⇒ `send_message` 不走活体投递、改走冷恢复,而冷恢复第一步 `persistence.open(id, 'write')` 会被副本自己的写租约拒绝(`SessionAlreadyOwnedError`),对外表现为 `subagent "…" is unavailable` —— **目录里看得见、消息发不进**。释放后副本留在磁盘上,成为官方 resume 路径可寻址的冷会话,首次发消息由官方冷恢复按 descriptor 唤醒;
+- **读盘按代际**:会话日志名由核心的会话格式版本决定(`session.vN.jsonl.zstd`,N = SESSION_FORMAT_VERSION);核心升级格式时**保留旧代际文件、在旁边另写新代际**,所以插件扫目录取**最高代际**,不把代际号写死(0.3.1 修复:此前写死 v3 与无版本名,核心升到 v4 后每个会话都被读成「没有子 agent」,fork 后新对话的子代理面板为空);
 - **过滤**:运行中的子 agent 跳过(记入日志);fork 子会话 seed 未引用的子 agent(属于被分支抛弃的路线)不跟随;
 - 操作记录写入 `$DSH_HOME/dsh-fork-relink.log`,含每个副本的可寻址性复核结果(`unresumable` 为空即全部可寻址)。
 
@@ -58,6 +59,8 @@ dsh plugin --profile web remove dsh-fork-relink
 ## 测试
 
 真机自测(在真实 web 服务器进程内驱动官方 `sessionController.fork`):fork 子会话的 `session/created` 事件触发、两个子 agent 的副本被创建(事件日志与原件逐行一致,仅多官方 seed 标记;头部 parent/origin/depth 正确)、原件不动;守卫三条(排除子 agent 自身创建/普通会话)与 seed 引用过滤均有离线测试覆盖。
+
+离线回归检查 `npm test`(`test/check-log-generation.mjs`):造出含 v0 / v3 / v4 与一个未来代际的会话目录,断言读到的是最高代际、非规范文件名被忽略 —— 0.3.1 的失效正是「代际号写死」,修改前该检查读到 0 个子 agent。
 
 ## 排队消息(自 0.3.0 起不再由本插件补位)
 

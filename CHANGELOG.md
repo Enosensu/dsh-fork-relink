@@ -2,6 +2,17 @@
 
 本仓库遵循语义化版本:`0.x` 期间次版本号(0.**2**.0)表示能力或行为变化,修订号(0.2.**1**)表示修复与文档。
 
+## 0.3.1 — 2026-09-26
+
+### 修复
+
+- **fork 后不再复制子 agent(日志里 `copied` 恒为空)**:插件把日志文件名写死成 `session.v3.jsonl.zstd` / `session.jsonl.zstd`,而核心已把会话格式升到 **v4**,磁盘上是 `session.v4.jsonl.zstd`。于是 `findChildSessions` 一个会话都读不到,`copyChildren` 把「读不到」和「没有子 agent」算成同一件事 —— fork 后新对话的子代理面板为空,`$DSH_HOME/dsh-fork-relink.log` 里只有一条 `copied: []`(没有 `skipped`、没有 `alreadyPopulated`),从 2026-09-24 起每次 fork 都如此。改为**扫目录取最高代际**(正则解析 `session[.vN].jsonl[.zstd]`,同代际优先压缩文件),代际号不再写死,核心下次升级格式不会再让插件失效。真实数据复核:2026-09-24 那次 fork 的父会话 `session-575ccef0…` 有 223 个直接子 agent,修复前插件读到 0 个、修复后 223 个。
+- **观察日志的租约未释放**:每个子 agent 经 `sessionQuery.observeSession` 读取后没有释放(`SessionObservation` 是 Disposable)。一次 fork 复制数百个子 agent 就留下数百条租约,把冷读取常驻在观察缓存里。现在每轮复制结束即释放。
+
+### 测试
+
+- 新增离线检查 `test/check-log-generation.mjs`(`npm test`):造出含 v0 / v3 / v4 与一个未来代际(v9)的会话目录,断言最高代际被选中、非规范文件名被忽略。修改前该检查读到 0 个子 agent 而失败。
+
 ## 0.3.0 — 2026-09-20
 
 ### 移除
